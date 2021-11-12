@@ -1,0 +1,21 @@
+[package]
+name = "clockkit"
+version = "0.1.0"
+authors = ["Fabian Dreer <infrasonics@gmx.de>"]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/Infrasonics/rust-clockkit"
+description = "Accurate distributed timestamps"
+readme = "README.md"
+keywords = ["timestamp", "network"]
+categories = ["date-and-time"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+clockkit-sys = "0.1"
+chrono = "0.4.19"
+thiserror = "1.0.30"
+
+[features]
+t_server_manual = []
