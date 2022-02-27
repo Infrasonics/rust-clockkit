@@ -27,14 +27,14 @@ use std::io;
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 use std::sync::atomic::{AtomicPtr, AtomicU8, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use thiserror::Error;
 
 use clockkit_sys as cks;
 
 /// Things that can go wrong.
-#[derive(Error,Debug)]
+#[derive(Error, Debug)]
 pub enum Error {
     /// The clock became out of sync.
     #[error("Clock out of sync")]
@@ -85,11 +85,11 @@ pub struct PhaseLockedClock {
     /// Atomic to end the infinite loop within the clock.
     end: Arc<AtomicU8>,
     /// Handle to the thread the PLC runs in.
-    handle: Option<thread::JoinHandle<()>>,
+    handle: Mutex<Option<thread::JoinHandle<()>>>,
 }
 
 impl Default for PhaseLockedClock {
-    /// Creates a PLC with default values
+    /// Creates a PLC with default values.
     ///
     /// This represents the default in a valid configuration file format:
     /// ```conf
@@ -104,7 +104,7 @@ impl Default for PhaseLockedClock {
 
         let localhost = unsafe { CString::from_vec_unchecked(rawlocalhost) };
 
-        let mut conf_reader = cks::ConfigReader {
+        let mut reader = cks::ConfigReader {
             server: localhost.as_ptr(),
             port: cks::ConfigReader_defaultPort,
             timeout: cks::ConfigReader_defaultTimeout,
@@ -112,25 +112,52 @@ impl Default for PhaseLockedClock {
             updatePanic: cks::ConfigReader_defaultUpdatePanic,
         };
 
-        let conf_reader_ptr: *mut cks::ConfigReader = &mut conf_reader;
-
-        let clock_ptr = unsafe { cks::ConfigReader_buildPLC(conf_reader_ptr) };
+        let clock_ptr = unsafe { reader.buildPLC() };
         PhaseLockedClock {
             clock: Arc::new(AtomicPtr::new(clock_ptr)),
             end: Arc::new(AtomicU8::new(false.into())),
-            handle: None,
+            handle: Mutex::new(None),
         }
     }
 }
 
 impl PhaseLockedClock {
+    /// Creates a PLC with the given values.
+    pub fn new(address: impl AsRef<str>, port: u32) -> Self {
+        let addr_raw: Vec<u8> = address.as_ref().as_bytes().into();
+
+        let addr = unsafe { CString::from_vec_unchecked(addr_raw) };
+
+        let mut reader = cks::ConfigReader {
+            server: addr.as_ptr(),
+            port,
+            timeout: cks::ConfigReader_defaultTimeout,
+            phasePanic: cks::ConfigReader_defaultPhasePanic,
+            updatePanic: cks::ConfigReader_defaultUpdatePanic,
+        };
+
+        let clock_ptr = unsafe { reader.buildPLC() };
+        PhaseLockedClock {
+            clock: Arc::new(AtomicPtr::new(clock_ptr)),
+            end: Arc::new(AtomicU8::new(false.into())),
+            handle: Mutex::new(None),
+        }
+    }
+
     /// Run the PLC in its own thread
-    pub fn start(&mut self) {
-        let cl = self.clock.clone();
-        let end = self.end.clone();
-        self.handle = Some(thread::spawn(move || unsafe {
-            cks::PhaseLockedClock_run((*cl).load(Ordering::Relaxed), end.as_mut_ptr())
-        }));
+    pub fn start(&self) {
+        if let Ok(mut guard) = self.handle.lock() {
+            // Only start the clock if there is no handle present, otherwise it's running.
+            if (*guard).is_none() {
+                let cl = self.clock.clone();
+                let end = self.end.clone();
+                *guard = Some(thread::spawn(move || unsafe {
+                    cks::PhaseLockedClock_run((*cl).load(Ordering::Relaxed), end.as_mut_ptr())
+                }))
+            }
+        } else {
+            panic!("Unable to start PhaseLockedClock due to poisened mutex");
+        };
     }
 
     /// Join the clock's thread explicitly.
@@ -141,19 +168,23 @@ impl PhaseLockedClock {
     /// A detailed opinion on why waiting for `drop()` to join the thread might not be the best
     /// option can be read here:
     /// <https://stackoverflow.com/questions/41331577/joining-a-thread-in-a-method-that-takes-mut-self-like-drop-results-in-cann/42791007#42791007>
-    pub fn join(mut self) -> std::thread::Result<()> {
+    pub fn join(self) -> std::thread::Result<()> {
         {
-            let mut _end: *mut u8 = (*self.end).as_mut_ptr();
+            let end: *mut u8 = (*self.end).as_mut_ptr();
             // This sets the break condition of the infinite loop in PhaseLockedClock see ::run() for details
             // The value is set to false in the constructor and only written here once to stop the
             // clock. No other accesses are allowed by the interface in this crate.
             unsafe {
-                *_end = true.into();
+                *end = true.into();
             }
         }
-        match self.handle.take() {
-            Some(h) => h.join(),
-            None => Ok(()),
+        if let Ok(mut guard) = self.handle.lock() {
+            match (*guard).take() {
+                Some(h) => h.join(),
+                None => Ok(()),
+            }
+        } else {
+            panic!("Clean shutdown of the PhaseLockedClock failed. Mutex poisoned");
         }
     }
 
@@ -185,7 +216,7 @@ impl PhaseLockedClock {
 
         let localhost = unsafe { CString::from_vec_unchecked(rawlocalhost) };
 
-        let mut conf_reader = cks::ConfigReader {
+        let mut reader = cks::ConfigReader {
             server: localhost.as_ptr(),
             port: cks::ConfigReader_defaultPort,
             timeout: cks::ConfigReader_defaultTimeout,
@@ -193,11 +224,10 @@ impl PhaseLockedClock {
             updatePanic: cks::ConfigReader_defaultUpdatePanic,
         };
 
-        let conf_reader_ptr: *mut cks::ConfigReader = &mut conf_reader;
+        let conf_reader_ptr: *mut cks::ConfigReader = &mut reader;
 
         let config = unsafe { CString::from_vec_unchecked(rawpath) };
-        let success: bool =
-            unsafe { cks::ConfigReader_readFrom(conf_reader_ptr, config.as_ptr()) };
+        let success: bool = unsafe { cks::ConfigReader_readFrom(conf_reader_ptr, config.as_ptr()) };
         if !success {
             return Err(std::io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -211,7 +241,7 @@ impl PhaseLockedClock {
         Ok(PhaseLockedClock {
             clock: Arc::new(AtomicPtr::new(clock_ptr)),
             end: Arc::new(AtomicU8::new(false.into())),
-            handle: None,
+            handle: Mutex::new(None),
         })
     }
 
@@ -268,27 +298,29 @@ impl PhaseLockedClock {
 
 impl Drop for PhaseLockedClock {
     fn drop(&mut self) {
-        if self.handle.is_some() {
-            {
-                let mut _end: *mut u8 = (*self.end).as_mut_ptr();
-                // This sets the break condition of the infinite loop in PhaseLockedClock see ::run() for details
-                // The value is set to false in the constructor and only written here once to stop the
-                // clock. No other accesses are allowed by the interface in this crate.
+        if let Ok(mut guard) = self.handle.lock() {
+            if (*guard).is_some() {
+                {
+                    let end: *mut u8 = (*self.end).as_mut_ptr();
+                    // This sets the break condition of the infinite loop in PhaseLockedClock see ::run() for details
+                    // The value is set to false in the constructor and only written here once to stop the
+                    // clock. No other accesses are allowed by the interface in this crate.
+                    unsafe {
+                        *end = true.into();
+                    }
+                }
+                match (*guard).take() {
+                    Some(h) => h.join(),
+                    None => Ok(()),
+                }
+                .expect("failed to join clock thread");
+                // Actually call the c++ dtor
                 unsafe {
-                    *_end = true.into();
+                    cks::PhaseLockedClock_PhaseLockedClock_destructor(
+                        (*self.clock).load(Ordering::Acquire),
+                    );
                 }
             }
-            match self.handle.take() {
-                Some(h) => h.join(),
-                None => Ok(()),
-            }
-            .expect("failed to join clock thread");
-        }
-        // Actually call the c++ dtor
-        unsafe {
-            cks::PhaseLockedClock_PhaseLockedClock_destructor(
-                (*self.clock).load(Ordering::Acquire),
-            );
         }
     }
 }

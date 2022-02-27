@@ -29,7 +29,7 @@ fn client_synchronizes() {
         thread::sleep(time::Duration::from_millis(100));
     }
 
-    let mut clock = ck::PhaseLockedClock::default();
+    let clock = ck::PhaseLockedClock::default();
     clock.start();
     thread::sleep(time::Duration::from_millis(234));
     clock.is_synchronized();
