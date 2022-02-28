@@ -123,14 +123,14 @@ impl Default for PhaseLockedClock {
 
 impl PhaseLockedClock {
     /// Creates a PLC with the given values.
-    pub fn new(address: impl AsRef<str>, port: u32) -> Self {
+    pub fn new(address: impl AsRef<str>, port: u16) -> Self {
         let addr_raw: Vec<u8> = address.as_ref().as_bytes().into();
 
         let addr = unsafe { CString::from_vec_unchecked(addr_raw) };
 
         let mut reader = cks::ConfigReader {
             server: addr.as_ptr(),
-            port,
+            port: port.into(),
             timeout: cks::ConfigReader_defaultTimeout,
             phasePanic: cks::ConfigReader_defaultPhasePanic,
             updatePanic: cks::ConfigReader_defaultUpdatePanic,
