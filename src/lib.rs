@@ -274,6 +274,10 @@ impl PhaseLockedClock {
     }
 
     /// Set the threshold for the phase panic.
+    ///
+    /// phasePanic: A PhaseLockedClock whose offset exceeds this,
+    /// relative to its reference clock, declares itself out of sync.
+    /// Default: 5ms
     pub fn set_phase_panic(&self, panic: Duration) -> Result<(), Error> {
         unsafe {
             cks::PhaseLockedClock_setPhasePanic(
@@ -285,6 +289,10 @@ impl PhaseLockedClock {
     }
 
     /// Set the threshold for the update panic.
+    ///
+    /// updatePanic: A PhaseLockedClock that hasn't updated successfully
+    /// for longer than this declares itself out of sync.
+    /// Default: 5s
     pub fn set_update_panic(&self, panic: Duration) -> Result<(), Error> {
         unsafe {
             cks::PhaseLockedClock_setUpdatePanic(
