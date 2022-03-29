@@ -49,6 +49,13 @@ pub enum Error {
 #[cxx::bridge]
 mod ffi {
 
+    /// Example:
+    /// ```
+    /// use clockkit;
+    /// let clock = clockkit::Config::default()
+    ///     .server("10.10.10.20".to_string())
+    ///     .port(1234)
+    ///     .build_clock();
     struct ConfigReader {
         server: String,
         port: u16,
@@ -112,10 +119,10 @@ impl ffi::ConfigReader {
 
         let config = std::fs::read_to_string(path.as_ref())?;
         for line in config.lines() {
-            if line.starts_with("#") {
+            if line.starts_with('#') {
                 continue
             }
-            let mut parts = line.trim().splitn(2, ":");
+            let mut parts = line.trim().splitn(2, ':');
             if let Some(key) = parts.next() {
                 if let Some(ref val) = parts.next() {
                     match key {
@@ -142,9 +149,29 @@ impl ffi::ConfigReader {
             handle: Mutex::new(None),
         }
     }
+
+    pub fn server(mut self, server: String) -> Self {
+        self.server = server;
+        self
+    }
+
+    pub fn port(mut self, port: u16) -> Self {
+        self.port = port;
+        self
+    }
+
+    pub fn phase_panic(mut self, phase_panic: u32) -> Self {
+        self.phasePanic = phase_panic;
+        self
+    }
+
+    pub fn update_panic(mut self, update_panic: u32) -> Self {
+        self.updatePanic = update_panic;
+        self
+    }
 }
 
-pub type ConfigReader = ffi::ConfigReader;
+pub type Config = ffi::ConfigReader;
 
 /// A clock locking its phase and frequency to a reference clock.
 ///
@@ -157,9 +184,9 @@ pub type ConfigReader = ffi::ConfigReader;
 ///
 /// Example:
 /// ```no_run
-/// # use clockkit as ck;
+/// # use clockkit;
 /// # use std::{thread,time};
-/// let mut clock = ck::ConfigBuilder::default().build_clock();
+/// let mut clock = clockkit::Config::default().build_clock();
 /// clock.start();
 /// thread::sleep(time::Duration::from_millis(234));
 /// clock.get_value().expect("Failed to get value from clockkit server");

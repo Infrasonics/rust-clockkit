@@ -11,7 +11,7 @@ struct CmdlineConf {
 
 fn main() {
     let args: CmdlineConf = argh::from_env();
-    let config = clockkit::ConfigReader::from_config_file(args.config_file).unwrap();
+    let config = clockkit::Config::from_config_file(args.config_file).unwrap();
     let plc = config.build_clock();
 
     plc.start();
