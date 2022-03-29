@@ -1,21 +1,28 @@
 [package]
 name = "clockkit"
-version = "0.1.1"
+version = "0.0.1"
 authors = ["Fabian Dreer <infrasonics@gmx.de>"]
 edition = "2021"
+# links = "clockkit"
 license = "MIT"
-repository = "https://github.com/Infrasonics/rust-clockkit"
-description = "Accurate distributed timestamps"
+repository = "https://github.com/Infrasonics/rust-clockkit-sys"
+description = "Low level bindings for the `clockkit` distributed timestamp service"
 readme = "README.md"
 keywords = ["timestamp", "network"]
-categories = ["date-and-time"]
+categories = ["external-ffi-bindings", "date-and-time"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[build-dependencies]
+cxx-build = "~1.0"
+
 [dependencies]
-clockkit-sys = "~0.1"
-chrono = "~0.4"
-thiserror = "~1.0"
+cxx = "~1.0"
 
 [features]
-t_server_manual = []
+default = []
+build_server = []
+
+[profile.release]
+lto = "fat"
+opt-level = "s"
