@@ -2,7 +2,7 @@
 #include "ClockClient.h"
 #include "Timestamp.h"
 #include "bridge.h"
-#include "clockkit/src/main.rs.h"
+#include "clockkit/src/lib.rs.h"
 #include "PhaseLockedClock.h"
 #include "kissnet.hpp"
 #include <memory>

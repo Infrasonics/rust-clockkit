@@ -21,7 +21,7 @@ fn main() -> io::Result<()> {
     .map(|f| bundle_dir.join(f))
     .collect::<Vec<PathBuf>>();
 
-    cxx_build::bridge("src/main.rs")
+    cxx_build::bridge("src/lib.rs")
         .files(ckfiles)
         .cpp(true)
         .flag("--std=c++17")
