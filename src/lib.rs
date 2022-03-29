@@ -35,6 +35,9 @@ pub enum Error {
     /// The internal representation overflowed.
     #[error("Overflow")]
     Overflow,
+    /// Invalid value.
+    #[error("Invalid value")]
+    Invalid,
     /// Could not read config file.
     #[error("Could not read config file")]
     ConfigRead(#[from] std::io::Error),
@@ -45,6 +48,10 @@ pub enum Error {
     #[error("Invalid configuration key")]
     ConfigKey(String),
 }
+
+// Obviously invalid values.  9223372036854775807 usec, or 293,000 years.
+const USEC_INVALID: i64 = i64::MAX;
+// constexpr tp tpInvalid = TpFromUsec(usecInvalid);
 
 #[cxx::bridge]
 mod ffi {
@@ -198,6 +205,9 @@ pub struct PhaseLockedClock {
 
 /// Helper function to create a NaiveDateTime from a timestamp in μs.
 fn make_timestamp(usec: i64) -> Result<NaiveDateTime, Error> {
+    if usec == USEC_INVALID {
+        return Err(Error::Invalid);
+    }
     let sec: i64 = usec / 1_000_000;
     let usec: Result<u32, _> = match (usec % 1_000_000).try_into() {
         Ok(x) => Ok(x),
