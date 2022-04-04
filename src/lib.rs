@@ -1,7 +1,8 @@
+use chrono::{DateTime, NaiveDateTime, Utc};
+use cxx::{self, SharedPtr};
 ///! Accurate distributed timestamps.
 ///!
 ///! Bindings to [clockkit](https://github.com/camilleg/clockkit).
-///! Currently requires `nightly` for the use of `feature(atomic_mut_ptr)`.
 ///!
 ///! Clockkit provides timestamps to distributed networked PCs
 ///! with guaranteed bounds on latency and jitter, typically under 10 microseconds,
@@ -16,11 +17,7 @@
 ///! Originally created for a full-motion
 ///! [driving simulator](https://web.archive.org/web/20170517201424/http://www.isl.uiuc.edu/Labs/Driving%20Simulator/Driving%20Simulator.html)
 ///! with eye tracking and a quickly churning set of other sensors and outputs, for over a decade.
-
-use std::{sync::Mutex, thread::JoinHandle, time::Duration, path::Path};
-
-use chrono::{DateTime, NaiveDateTime, Utc};
-use cxx::{self, SharedPtr};
+use std::{fmt::Debug, path::Path, sync::Mutex, thread::JoinHandle, time::Duration};
 use thiserror::Error;
 
 /// Things that can go wrong.
@@ -36,8 +33,8 @@ pub enum Error {
     #[error("Overflow")]
     Overflow,
     /// Invalid value.
-    #[error("Invalid value")]
-    Invalid,
+    #[error("Invalid value: {0}")]
+    Invalid(i64),
     /// Could not read config file.
     #[error("Could not read config file")]
     ConfigRead(#[from] std::io::Error),
@@ -51,7 +48,6 @@ pub enum Error {
 
 // Obviously invalid values.  9223372036854775807 usec, or 293,000 years.
 const USEC_INVALID: i64 = i64::MAX;
-// constexpr tp tpInvalid = TpFromUsec(usecInvalid);
 
 #[cxx::bridge]
 mod ffi {
@@ -64,6 +60,7 @@ mod ffi {
     ///     .port(1234)
     ///     .build_clock();
     #[namespace = "bridge"]
+    #[derive(Debug)]
     struct ConfigReader {
         server: String,
         port: u16,
@@ -123,13 +120,14 @@ impl ffi::ConfigReader {
     /// phasePanic:5000
     /// updatePanic:5000000
     /// ```
+    #[cfg_attr(feature="tracing", tracing::instrument(level = "INFO", fields(path=%path.as_ref().display())))]
     pub fn from_config_file(path: impl AsRef<Path>) -> Result<Self, Error> {
         let mut res = Self::default();
 
         let config = std::fs::read_to_string(path.as_ref())?;
         for line in config.lines() {
             if line.starts_with('#') {
-                continue
+                continue;
             }
             let mut parts = line.trim().splitn(2, ':');
             if let Some(key) = parts.next() {
@@ -149,6 +147,8 @@ impl ffi::ConfigReader {
                 }
             }
         }
+        #[cfg(feature = "tracing")]
+        tracing::debug!(config=?res, "Read config from file");
         Ok(res)
     }
 
@@ -206,9 +206,10 @@ pub struct PhaseLockedClock {
 }
 
 /// Helper function to create a NaiveDateTime from a timestamp in μs.
+#[cfg_attr(feature = "tracing", tracing::instrument(level = "DEBUG"))]
 fn make_timestamp(usec: i64) -> Result<NaiveDateTime, Error> {
     if usec == USEC_INVALID {
-        return Err(Error::Invalid);
+        return Err(Error::Invalid(usec));
     }
     let sec: i64 = usec / 1_000_000;
     let usec: Result<u32, _> = match (usec % 1_000_000).try_into() {
@@ -232,12 +233,19 @@ impl PhaseLockedClock {
     }
 
     /// Run the PLC in its own thread
+    #[cfg_attr(feature = "tracing", tracing::instrument(level = "INFO", skip_all))]
     pub fn start(&self) {
         if let Ok(mut guard) = self.handle.lock() {
             // Only start the clock if there is no handle present, otherwise it's running.
             if (*guard).is_none() {
                 let plc = self.ptr.clone();
-                *guard = Some(std::thread::spawn(move || ffi::run1(plc)))
+                *guard = Some(std::thread::spawn(move || ffi::run1(plc)));
+
+                #[cfg(feature = "tracing")]
+                tracing::info!("PhaseLockedClock started");
+            } else {
+                #[cfg(feature = "tracing")]
+                tracing::warn!("PhaseLockedClock is already running");
             }
         } else {
             panic!("Unable to start PhaseLockedClock due to poisened mutex");
@@ -245,6 +253,7 @@ impl PhaseLockedClock {
     }
 
     /// Stop the PLC.
+    #[cfg_attr(feature = "tracing", tracing::instrument(level = "INFO", skip_all))]
     pub fn stop(&self) {
         let plc = self.ptr.clone();
         ffi::cancel(plc);
@@ -255,6 +264,7 @@ impl PhaseLockedClock {
     /// phasePanic: A PhaseLockedClock whose offset exceeds this,
     /// relative to its reference clock, declares itself out of sync.
     /// Default: 5ms
+    #[cfg_attr(feature = "tracing", tracing::instrument(level = "INFO", skip_all))]
     pub fn set_phase_panic(&mut self, dur: Duration) {
         let dur = dur
             .as_micros()
@@ -264,11 +274,12 @@ impl PhaseLockedClock {
         ffi::setPhasePanic(plc, dur)
     }
 
-   /// Set the threshold for the update panic.
-   ///
-   /// updatePanic: A PhaseLockedClock that hasn't updated successfully
-   /// for longer than this declares itself out of sync.
-   /// Default: 5s
+    /// Set the threshold for the update panic.
+    ///
+    /// updatePanic: A PhaseLockedClock that hasn't updated successfully
+    /// for longer than this declares itself out of sync.
+    /// Default: 5s
+    #[cfg_attr(feature = "tracing", tracing::instrument(level = "INFO", skip_all))]
     pub fn set_update_panic(&mut self, dur: Duration) {
         let dur = dur
             .as_micros()
@@ -304,4 +315,3 @@ impl Drop for PhaseLockedClock {
 unsafe impl Send for ffi::PhaseLockedClock {}
 
 unsafe impl Sync for ffi::PhaseLockedClock {}
-
