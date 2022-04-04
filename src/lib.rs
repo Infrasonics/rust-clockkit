@@ -63,6 +63,7 @@ mod ffi {
     ///     .server("10.10.10.20".to_string())
     ///     .port(1234)
     ///     .build_clock();
+    #[namespace = "bridge"]
     struct ConfigReader {
         server: String,
         port: u16,
@@ -71,6 +72,7 @@ mod ffi {
         updatePanic: u32,
     }
 
+    #[namespace = "bridge"]
     unsafe extern "C++" {
         include!("clockkit/include/ClockKit/bridge.h");
 

@@ -41,7 +41,6 @@ fn main() -> io::Result<()> {
             .unwrap();
     }
 
-
     println!("cargo:rustc-link-search=native={}", bundle_dir.display());
     println!("cargo:rustc-link-lib=static=clockkit");
 

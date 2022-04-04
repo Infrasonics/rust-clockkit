@@ -9,6 +9,8 @@
 #include <random>
 #include <utility>
 
+namespace bridge {
+
 std::pair<dex::PhaseLockedClock*, dex::ClockClient*> buildClock(ConfigReader config)
 {
     auto cli = new dex::ClockClient(kissnet::endpoint(std::string(config.server), config.port));
@@ -41,3 +43,4 @@ void setUpdatePanic(std::shared_ptr<dex::PhaseLockedClock> clock, int64_t micros
     clock->setUpdatePanic(val);
 }
 
+} // ns bridge
