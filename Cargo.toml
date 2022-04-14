@@ -1,11 +1,11 @@
 [package]
 name = "clockkit"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Fabian Dreer <infrasonics@gmx.de>"]
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/Infrasonics/rust-clockkit"
-description = "Low level bindings for the `clockkit` distributed timestamp service"
+description = "Client side library for the `clockkit` distributed timestamp service"
 readme = "README.md"
 keywords = ["timestamp", "network"]
 categories = ["date-and-time"]
@@ -26,7 +26,7 @@ argh = "0.1.7"
 
 [features]
 default = []
-build_server = []
+tracing = ["dep:tracing"]
 
 [profile.release]
 lto = "fat"
